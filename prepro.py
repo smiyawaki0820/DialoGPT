@@ -18,6 +18,7 @@ from tqdm import tqdm
 
 from env import END_OF_TEXT_TOKEN
 from gpt2_training.train_utils import InputFeatures_train as InputFeatures
+from transformers import T5Tokenizer
 
 
 def _get_file_len(corpus):
@@ -53,8 +54,11 @@ def _get_inputs_from_text(text, tokenizer):
     return weights, inputs
 
 
-def _make_features(id_, weights, inputs, tokenizer, max_len):
-    end_of_text_id = tokenizer.encoder[END_OF_TEXT_TOKEN]
+def _make_features(id_, weights, inputs, tokenizer, max_len, ja=False):
+    if ja:
+        end_of_text_id = tokenizer.convert_tokens_to_ids(END_OF_TEXT_TOKEN)
+    else:
+        end_of_text_id = tokenizer.encoder[END_OF_TEXT_TOKEN]
     features = []
     sents = []
     ws = []
@@ -143,7 +147,10 @@ def _make_feature(id_, sents, ws, eos):
 
 
 def main(args):
-    toker = GPT2Tokenizer.from_pretrained('gpt2')
+    if args.ja:
+        toker = T5Tokenizer.from_pretrained('rinna/japanese-gpt2-medium')
+    else:
+        toker = GPT2Tokenizer.from_pretrained('gpt2')
     attrs = []
     if args.reverse:
         attrs.append('reverse')
@@ -182,7 +189,7 @@ def main(args):
                 if len(weights) < 2:
                     continue
                 features = _make_features(n_example, weights, inputs,
-                                          toker, args.max_seq_len)
+                                          toker, args.max_seq_len, ja=args.ja)
                 for feature in features:
                     chunk.append(vars(feature))
                     n_example += 1
@@ -215,6 +222,8 @@ if __name__ == '__main__':
                         help='reverse the src tgt')
     parser.add_argument('--two_turn', action='store_true',
                         help='take only the first 2 turns')
+    parser.add_argument('--ja', action='store_true',
+                        help='use japanese tokenizer')
 
     args = parser.parse_args()
 

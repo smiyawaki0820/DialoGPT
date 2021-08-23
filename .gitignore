@@ -473,3 +473,9 @@ models/
 # docker/
 # prepro_v4.py
 # prepro.py
+
+# Datasets
+data/
+
+# Misc
+_apex/

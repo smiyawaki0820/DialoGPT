@@ -15,6 +15,37 @@ logger = logging.getLogger(__name__)
 SEQ_LENGTH_SHRINK_PROP = 0.9
 
 
+def load_ja_model(model, checkpoint, args, verbose=False):
+    n_gpu = args.n_gpu
+    device = args.device
+    if checkpoint is None or checkpoint == "None":
+        if verbose:
+            logger.info('no checkpoint provided for %s!' % model._get_name())
+    else:
+        model_state_dict = checkpoint.state_dict()
+        eliminates = []
+        for key, value in checkpoint.state_dict().items():
+            if key == 'lm_head.weight':
+                model_state_dict['lm_head.decoder.weight'] = model_state_dict.pop(key)
+            elif key not in model.state_dict():
+                model_state_dict.pop(key)
+                eliminates.append(key)
+        randoms = [key for key in model.state_dict() if key not in model_state_dict]
+        from pprint import pformat
+        logger.info(f'| The following keys are not loaded:\n{pformat(randoms)}')
+        logger.info(f'| The following keys are left over:\n{pformat(eliminates)}')
+        model.load_state_dict(model_state_dict)
+
+    if args.fp16:
+        logger.info('in fp16, model.half() activated')
+        model.half()
+    model.to(device)
+    if n_gpu > 1:
+        logging.info('data parallel because more than one gpu')
+        model = torch.nn.DataParallel(model)
+    return model
+
+
 def load_model(model, checkpoint, args, verbose=False):
     n_gpu = args.n_gpu
     device = args.device
@@ -114,7 +145,7 @@ def boolean_string(s):
 
 
 def get_eval_list_same_length(input_file, tokenizer, max_batch_size,
-                              norm=True):
+                              norm=True, ja=False):
     examples = []
     with open(input_file, 'r', encoding="utf-8") as f:
         content = [l.split('\t') for l in f.read().splitlines()]
@@ -135,7 +166,10 @@ def get_eval_list_same_length(input_file, tokenizer, max_batch_size,
     def featurize(example):
         conv_id = example.conv_id
         context_id = tokenizer.encode(example.context)
-        end_of_text_id = tokenizer.encoder[END_OF_TEXT_TOKEN]
+        if ja:
+            end_of_text_id = tokenizer.convert_tokens_to_ids(END_OF_TEXT_TOKEN)
+        else:
+            end_of_text_id = tokenizer.encoder[END_OF_TEXT_TOKEN]
 
         response_id = tokenizer.encode(example.response)
         input_ids = context_id + [end_of_text_id]

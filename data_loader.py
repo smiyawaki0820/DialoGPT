@@ -164,14 +164,17 @@ class DistributedBucketingDataLoader(BucketingDataLoader):
 
 
 def convert_examples_to_features_dynamic(examples, tokenizer,
-                                         max_seq_length=512):
+                                         max_seq_length=512, ja=False):
     """
     do not pad
     """
     def featurize(example):
         conv_id = example.conv_id
         context_id = tokenizer.encode(example.context)
-        end_of_text_id = tokenizer.encoder[END_OF_TEXT_TOKEN]
+        if ja:
+            end_of_text_id = tokenizer.convert_tokens_to_ids(END_OF_TEXT_TOKEN)
+        else:
+            end_of_text_id = tokenizer.encoder[END_OF_TEXT_TOKEN]
 
         # response is provided in example
         response_id = tokenizer.encode(example.response)
@@ -210,13 +213,14 @@ def convert_examples_to_features_dynamic(examples, tokenizer,
 class DynamicBatchingLoader(object):
     """ this loader takes raw text file, used for validate perplexity """
     def __init__(self, corpus_file, tokenizer, normalize_data,
-                 batch_size, max_seq_length):
+                 batch_size, max_seq_length, ja=False):
         self.corpus = corpus_file
         self.toker = tokenizer
         self.norm = normalize_data
         self.bs = batch_size
         self.max_seq_length = max_seq_length
         self.num_examples = self.get_len(corpus_file)
+        self.ja = ja
 
     def __iter__(self, epoch=1):
         if epoch > 0:
@@ -255,7 +259,7 @@ class DynamicBatchingLoader(object):
                         if cur_bs >= self.bs:
                             break
                     features = convert_examples_to_features_dynamic(
-                        examples, self.toker, self.max_seq_length)
+                        examples, self.toker, self.max_seq_length, ja=self.ja)
                     batch = self._batch_feature(features)
                     yield batch
         except StopIteration:

@@ -20,8 +20,10 @@ import numpy as np
 from os.path import join
 from torch.distributed import get_rank, get_world_size
 
+from env import END_OF_TURN_TOKEN, END_OF_TEXT_TOKEN
 from lsp_model import GPT2LMHeadModel, GPT2Tokenizer, GPT2Config, Adam
-from gpt2_training.train_utils import load_model, boolean_string, set_lr, get_eval_list_same_length
+from transformers import T5Tokenizer, AutoModelForCausalLM
+from gpt2_training.train_utils import load_ja_model, boolean_string, set_lr, get_eval_list_same_length
 from gpt2_training.eval_utils import eval_model_loss
 
 from data_loader import BucketingDataLoader, DynamicBatchingLoader, DistributedBucketingDataLoader
@@ -44,7 +46,7 @@ EVAL_STEP = 100000
 ##########################################################################
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model_name_or_path', type=str,
+parser.add_argument('--model_name_or_path', type=str, default="rinna/japanese-gpt2-medium",
                     help='pretrained model name or path to local checkpoint')
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--max_seq_length", type=int, default=128)
@@ -165,10 +167,25 @@ for a in args_dict:
 #########################################################################
 # Prepare Data Set
 ##########################################################################
-enc = GPT2Tokenizer.from_pretrained(args.model_name_or_path)
+# enc = GPT2Tokenizer.from_pretrained(args.model_name_or_path)
+enc = T5Tokenizer.from_pretrained(args.model_name_or_path)
+# enc.add_tokens([END_OF_TURN_TOKEN, END_OF_TEXT_TOKEN])
+enc.do_lower_case = True
+_model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path)
 
-config = GPT2Config.from_json_file(
-    join(args.model_name_or_path, 'config.json'))
+# config = GPT2Config.from_json_file(
+#     join(args.model_name_or_path, 'config.json'))
+config = GPT2Config.from_dict(_model.config.__dict__)
+# config = GPT2Config.from_dict({
+#   "initializer_range": _model.config.initializer_range,
+#   "layer_norm_epsilon": _model.config.layer_norm_epsilon,
+#   "n_ctx": _model.config.n_ctx,
+#   "n_embd": _model.config.n_embd,
+#   "n_head": _model.config.n_head,
+#   "n_layer": _model.config.n_layer,
+#   "n_positions": _model.config.n_positions,
+#   "vocab_size": _model.config.vocab_size
+# })
 
 if args.local_rank == -1:
     train_dataloader = BucketingDataLoader(args.train_input_file,
@@ -182,17 +199,17 @@ else:
 
 eval_dataloader_loss = DynamicBatchingLoader(
     args.eval_input_file, enc, args.normalize_data,
-    args.eval_batch_size, args.max_seq_length)
+    args.eval_batch_size, args.max_seq_length, ja=True)
 
 eval_dataloader_gen = get_eval_list_same_length(
-    args.eval_input_file, enc, args.eval_batch_size, True)
+    args.eval_input_file, enc, args.eval_batch_size, True, ja=True)
 
 
 #########################################################################
 # Prepare Model and Optimizer
 ##########################################################################
-model = load_model(GPT2LMHeadModel(config), args.init_checkpoint,
-                   args, verbose=True)
+model = load_ja_model(GPT2LMHeadModel(config), _model,
+                  args, verbose=True)
 if args.local_rank != -1:
     # when from scratch make sure initial models are the same
     params = [p.data for p in model.parameters()]

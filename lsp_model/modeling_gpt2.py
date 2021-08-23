@@ -84,6 +84,7 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
     def forward(self, input_ids, position_ids=None, token_type_ids=None, lm_labels=None, past=None):
         hidden_states, presents = self.transformer(input_ids, position_ids, token_type_ids, past)
         # import pdb; pdb.set_trace()
+        hidden_states = hidden_states[-1]
         lm_logits = self.lm_head(hidden_states)
         if lm_labels is not None:
             # loss_fct = CrossEntropyLoss(ignore_index=-1)
